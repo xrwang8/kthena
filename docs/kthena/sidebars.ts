@@ -53,6 +53,7 @@ const sidebars: SidebarsConfig = {
           },
           items: [
             'user-guide/lws-integration',
+            'user-guide/modelserving-plugin-framework',
           ],
         },
         'user-guide/multi-node-inference',
