@@ -137,7 +137,7 @@ func (engine *sglangEngine) GetHistogramPodMetrics(allMetrics map[string]*dto.Me
 	return wantMetrics, histogramMetrics
 }
 
-// implemented the get models function for sglang engine, 
+// GetPodModels retrieves the list of models from a pod running the sglang engine.
 func (engine *sglangEngine) GetPodModels(pod *corev1.Pod) ([]string, error) {
 	url := fmt.Sprintf("http://%s:%d/v1/models", pod.Status.PodIP, engine.MetricPort)
 	resp, err := http.Get(url)
