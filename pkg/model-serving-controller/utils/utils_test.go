@@ -35,20 +35,24 @@ func TestGenerateEntryPod_WithAnnotations(t *testing.T) {
 			Namespace: "default",
 		},
 	}
+	annotations := map[string]string{
+		"test-annotation": "test-value",
+	}
 	role := workloadv1alpha1.Role{
 		Name: "test-role",
 		EntryTemplate: workloadv1alpha1.PodTemplateSpec{
 			Metadata: &workloadv1alpha1.Metadata{
-				Annotations: map[string]string{
-					"test-annotation": "test-value",
-				},
+				Annotations: annotations,
 			},
 		},
 	}
 
+	var pod *corev1.Pod
 	assert.NotPanics(t, func() {
-		GenerateEntryPod(role, ms, "test-group", 0, "test-revision")
+		pod = GenerateEntryPod(role, ms, "test-group", 0, "test-revision")
 	})
+	assert.NotNil(t, pod)
+	assert.Equal(t, annotations, pod.Annotations)
 }
 
 func TestGenerateWorkerPod_WithAnnotations(t *testing.T) {
@@ -58,13 +62,14 @@ func TestGenerateWorkerPod_WithAnnotations(t *testing.T) {
 			Namespace: "default",
 		},
 	}
+	annotations := map[string]string{
+		"test-annotation": "test-value",
+	}
 	role := workloadv1alpha1.Role{
 		Name: "test-role",
 		WorkerTemplate: &workloadv1alpha1.PodTemplateSpec{
 			Metadata: &workloadv1alpha1.Metadata{
-				Annotations: map[string]string{
-					"test-annotation": "test-value",
-				},
+				Annotations: annotations,
 			},
 		},
 	}
@@ -75,9 +80,12 @@ func TestGenerateWorkerPod_WithAnnotations(t *testing.T) {
 			Namespace: "default",
 		},
 	}
+	var pod *corev1.Pod
 	assert.NotPanics(t, func() {
-		GenerateWorkerPod(role, ms, entryPod, "test-group", 0, 1, "test-revision")
+		pod = GenerateWorkerPod(role, ms, entryPod, "test-group", 0, 1, "test-revision")
 	})
+	assert.NotNil(t, pod)
+	assert.Equal(t, annotations, pod.Annotations)
 }
 
 func TestSetCondition(t *testing.T) {
