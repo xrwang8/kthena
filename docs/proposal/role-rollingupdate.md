@@ -50,7 +50,7 @@ know that this has succeeded?
 
 Support for role-based rolling updates:
 
-- Support Partition
+- Support Partition. Partitioning is still supported at the serving group level. However, even in role-based rolling updates, partition ensures that some servingGroups remain unchanged.
 - Support ControllerRevision history for Roles. Maybe servingGroup ControllerRevision is enough.
 - Support MaxUnavailable
 - Perform a rolling update step by step in descending order of Role IDs.
@@ -123,17 +123,17 @@ required) or even code snippets. If there's any ambiguity about HOW your
 proposal will be implemented, this is the place to discuss them.
 -->
 
-Add a new RolloutStrategyType: RoleRollingUpdate
+Add a new RolloutStrategyType: RoleRollingUpdate in the modelServing API.
 
 ```go
 type RolloutStrategyType string
 
 const (
     // ServingGroupRollingUpdate indicates that ServingGroup replicas will be updated one by one.
-    ServingGroupRollingUpdate RolloutStrategyType = "ServingGroupRollingUpdate"
+    ServingGroupRollingUpdate RolloutStrategyType = "ServingGroup"
 
     // RoleRollingUpdate indicates that Role replicas will be updated one by one.
-    RoleRollingUpdate RolloutStrategyType = "RoleRollingUpdate"
+    RoleRollingUpdate RolloutStrategyType = "Role"
 )
 ```
 
