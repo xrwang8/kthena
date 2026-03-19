@@ -37,6 +37,7 @@ import (
 
 type HTTPRouteController struct {
 	httpRouteLister gatewaylisters.HTTPRouteLister
+	gatewayLister   gatewaylisters.GatewayLister
 	httpRouteSynced cache.InformerSynced
 	registration    cache.ResourceEventHandlerRegistration
 
@@ -50,9 +51,11 @@ func NewHTTPRouteController(
 	store datastore.Store,
 ) *HTTPRouteController {
 	httpRouteInformer := gatewayInformerFactory.Gateway().V1().HTTPRoutes()
+	gatewayInformer := gatewayInformerFactory.Gateway().V1().Gateways()
 
 	controller := &HTTPRouteController{
 		httpRouteLister: httpRouteInformer.Lister(),
+		gatewayLister:   gatewayInformer.Lister(),
 		httpRouteSynced: httpRouteInformer.Informer().HasSynced,
 		workqueue:       workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[any]()),
 		initialSync:     &atomic.Bool{},
@@ -65,7 +68,6 @@ func NewHTTPRouteController(
 		DeleteFunc: controller.enqueueHTTPRoute,
 	})
 
-	gatewayInformer := gatewayInformerFactory.Gateway().V1().Gateways()
 	gatewayFilter := &cache.FilteringResourceEventHandler{
 		FilterFunc: func(obj interface{}) bool {
 			gw, ok := obj.(*gatewayv1.Gateway)
@@ -74,6 +76,12 @@ func NewHTTPRouteController(
 		Handler: cache.ResourceEventHandlerFuncs{
 			AddFunc:    controller.enqueueHTTPRoutesForGateway,
 			UpdateFunc: func(_, new interface{}) { controller.enqueueHTTPRoutesForGateway(new) },
+			DeleteFunc: func(obj interface{}) {
+				if d, ok := obj.(cache.DeletedFinalStateUnknown); ok {
+					obj = d.Obj
+				}
+				controller.enqueueHTTPRoutesForGateway(obj)
+			},
 		},
 	}
 	_, _ = gatewayInformer.Informer().AddEventHandler(gatewayFilter)
@@ -156,6 +164,8 @@ func (c *HTTPRouteController) syncHandler(key string) error {
 	}
 
 	// Only process HTTPRoutes that reference kthena-router GatewayClass
+	// Check all parentRefs - process immediately if any matches, retry only if no match and a Gateway is pending
+	var gatewayPending bool
 	for _, parentRef := range httpRoute.Spec.ParentRefs {
 		if parentRef.Kind == nil || *parentRef.Kind != "Gateway" {
 			continue
@@ -167,13 +177,20 @@ func (c *HTTPRouteController) syncHandler(key string) error {
 		gatewayKey := fmt.Sprintf("%s/%s", gatewayNamespace, string(parentRef.Name))
 		gw := c.store.GetGateway(gatewayKey)
 		if gw == nil {
-			return fmt.Errorf("gateway %s not synced yet", gatewayKey)
+			if _, err := c.gatewayLister.Gateways(gatewayNamespace).Get(string(parentRef.Name)); err == nil {
+				gatewayPending = true
+			}
+			continue
 		}
 		if string(gw.Spec.GatewayClassName) == DefaultGatewayClassName {
 			return c.store.AddOrUpdateHTTPRoute(httpRoute)
 		}
 	}
+	if gatewayPending {
+		return fmt.Errorf("gateway not synced yet")
+	}
 	klog.V(4).Infof("Skipping HTTPRoute %s/%s: does not reference kthena-router Gateway", namespace, name)
+	_ = c.store.DeleteHTTPRoute(key)
 	return nil
 }
 

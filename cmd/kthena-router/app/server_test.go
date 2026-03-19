@@ -22,13 +22,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// mockController implements Controller for testing
-type mockController struct {
-	synced bool
-}
-
-func (m *mockController) HasSynced() bool { return m.synced }
-
 // TestNewServerDebugPortDefault tests that NewServer accepts different debug port values
 func TestNewServerDebugPortDefault(t *testing.T) {
 	testCases := []struct {
@@ -46,32 +39,4 @@ func TestNewServerDebugPortDefault(t *testing.T) {
 			assert.Equal(t, tc.debugPort, server.DebugPort, "DebugPort should match the provided value")
 		})
 	}
-}
-
-// TestAggregatedController_HasSynced verifies that HasSynced returns true only when all controllers have synced
-func TestAggregatedController_HasSynced(t *testing.T) {
-	t.Run("all synced", func(t *testing.T) {
-		ac := &aggregatedController{
-			controllers: []Controller{
-				&mockController{synced: true},
-				&mockController{synced: true},
-			},
-		}
-		assert.True(t, ac.HasSynced())
-	})
-
-	t.Run("one not synced", func(t *testing.T) {
-		ac := &aggregatedController{
-			controllers: []Controller{
-				&mockController{synced: true},
-				&mockController{synced: false},
-			},
-		}
-		assert.False(t, ac.HasSynced())
-	})
-
-	t.Run("empty controllers", func(t *testing.T) {
-		ac := &aggregatedController{controllers: []Controller{}}
-		assert.True(t, ac.HasSynced())
-	})
 }

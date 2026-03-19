@@ -161,3 +161,50 @@ func TestHTTPRouteController_EnqueueHTTPRoutesForGateway_NoMatchingRoutes(t *tes
 	time.Sleep(50 * time.Millisecond)
 	assert.Equal(t, 0, ctrl.workqueue.Len(), "no HTTPRoutes reference gateway-1")
 }
+
+// TestHTTPRouteController_MultipleParentRefs_FirstPending verifies that when the first parentRef
+// references a Gateway not in store, we still process if a later parentRef matches.
+func TestHTTPRouteController_MultipleParentRefs_FirstPending(t *testing.T) {
+	gatewayClient := gatewayfake.NewSimpleClientset()
+	gatewayInformerFactory := gatewayinformers.NewSharedInformerFactory(gatewayClient, 0)
+	store := datastore.New()
+
+	ctx := context.Background()
+	ns := "default"
+	gw2 := &gatewayv1.Gateway{
+		ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: "gateway-2"},
+		Spec: gatewayv1.GatewaySpec{
+			GatewayClassName: gatewayv1.ObjectName(DefaultGatewayClassName),
+		},
+	}
+	_, err := gatewayClient.GatewayV1().Gateways(ns).Create(ctx, gw2, metav1.CreateOptions{})
+	assert.NoError(t, err)
+	assert.NoError(t, store.AddOrUpdateGateway(gw2))
+
+	httpRoute := &gatewayv1.HTTPRoute{
+		ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: "route-multi"},
+		Spec: gatewayv1.HTTPRouteSpec{
+			CommonRouteSpec: gatewayv1.CommonRouteSpec{
+				ParentRefs: []gatewayv1.ParentReference{
+					{Kind: ptr(gatewayv1.Kind("Gateway")), Name: gatewayv1.ObjectName("gateway-1")},
+					{Kind: ptr(gatewayv1.Kind("Gateway")), Name: gatewayv1.ObjectName("gateway-2")},
+				},
+			},
+		},
+	}
+	_, err = gatewayClient.GatewayV1().HTTPRoutes(ns).Create(ctx, httpRoute, metav1.CreateOptions{})
+	assert.NoError(t, err)
+
+	ctrl := NewHTTPRouteController(gatewayInformerFactory, store)
+	stop := make(chan struct{})
+	defer close(stop)
+	gatewayInformerFactory.Start(stop)
+
+	if !cache.WaitForCacheSync(stop, gatewayInformerFactory.Gateway().V1().HTTPRoutes().Informer().HasSynced) {
+		t.Fatal("cache sync timeout")
+	}
+
+	err = ctrl.syncHandler(ns + "/route-multi")
+	assert.NoError(t, err)
+	assert.NotNil(t, store.GetHTTPRoute(ns+"/route-multi"))
+}
