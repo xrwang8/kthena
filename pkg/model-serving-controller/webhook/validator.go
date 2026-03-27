@@ -149,12 +149,7 @@ func validateRollingUpdateConfiguration(ms *workloadv1alpha1.ModelServing) field
 	// Validate partition field
 	if ms.Spec.RolloutStrategy.RollingUpdateConfiguration.Partition != nil {
 		partitionPath := field.NewPath("spec").Child("rolloutStrategy").Child("rollingUpdateConfiguration").Child("partition")
-		partitionValue := *ms.Spec.RolloutStrategy.RollingUpdateConfiguration.Partition
-
-		// Check if partition is non-negative
-		if partitionValue < 0 {
-			allErrs = append(allErrs, field.Invalid(partitionPath, partitionValue, "partition must be greater than or equal to 0"))
-		}
+		allErrs = append(allErrs, validateIntOrPercent(ms.Spec.RolloutStrategy.RollingUpdateConfiguration.Partition, partitionPath)...)
 	}
 
 	maxUnavailableValue, err := intstr.GetScaledValueFromIntOrPercent(maxUnavailable, int(*ms.Spec.Replicas), false)

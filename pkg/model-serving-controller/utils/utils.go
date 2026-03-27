@@ -412,7 +412,11 @@ func SetCondition(ms *workloadv1alpha1.ModelServing, progressingGroups, updatedG
 
 	partition := 0
 	if ms.Spec.RolloutStrategy != nil && ms.Spec.RolloutStrategy.RollingUpdateConfiguration != nil && ms.Spec.RolloutStrategy.RollingUpdateConfiguration.Partition != nil {
-		partition = int(*ms.Spec.RolloutStrategy.RollingUpdateConfiguration.Partition)
+		replicas := int(*ms.Spec.Replicas)
+		partitionValue, err := intstr.GetScaledValueFromIntOrPercent(ms.Spec.RolloutStrategy.RollingUpdateConfiguration.Partition, replicas, true)
+		if err == nil {
+			partition = partitionValue
+		}
 	}
 
 	// If progressingGroups is empty, all groups are running. In addition, we still need to check revision.
