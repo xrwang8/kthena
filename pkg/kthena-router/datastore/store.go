@@ -174,6 +174,8 @@ type Store interface {
 	GetTokenCount(userId, modelName string) (float64, error)
 	// UpdateTokenCount updates token usage for a user and model
 	UpdateTokenCount(userId, modelName string, inputTokens, outputTokens float64) error
+	// GetRequestCount returns the request count for a user and model in the current window
+	GetRequestCount(userId, modelName string) (int, error)
 
 	// Enqueue adds a request to the fair queue
 	Enqueue(*Request) error
@@ -278,6 +280,8 @@ type store struct {
 	// model -> RequestPriorityQueue
 	requestWaitingQueue sync.Map
 	tokenTracker        TokenTracker
+	rootCtx             context.Context // Lifecycle context for queue goroutines, set by Run()
+	fairnessQueueConfig FairnessQueueConfig
 }
 
 func New() Store {
@@ -296,11 +300,52 @@ func New() Store {
 		initialSynced:       &atomic.Bool{},
 		requestWaitingQueue: sync.Map{},
 		// Create token tracker with environment-based configuration
-		tokenTracker: createTokenTracker(),
+		tokenTracker:        createTokenTracker(),
+		fairnessQueueConfig: createFairnessQueueConfig(),
 	}
 }
 
+// createFairnessQueueConfig reads fairness queue configuration from environment variables.
+func createFairnessQueueConfig() FairnessQueueConfig {
+	cfg := DefaultFairnessQueueConfig()
+
+	if v := os.Getenv("FAIRNESS_MAX_CONCURRENT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			cfg.MaxConcurrent = n
+		} else {
+			klog.Warningf("Invalid FAIRNESS_MAX_CONCURRENT: %q, using default %d", v, cfg.MaxConcurrent)
+		}
+	}
+
+	if v := os.Getenv("FAIRNESS_MAX_QPS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.MaxQPS = n
+		} else {
+			klog.Warningf("Invalid FAIRNESS_MAX_QPS: %q, using default %d", v, cfg.MaxQPS)
+		}
+	}
+
+	if v := os.Getenv("FAIRNESS_PRIORITY_REFRESH_RETRIES"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			cfg.MaxPriorityRefreshRetries = n
+		} else {
+			klog.Warningf("Invalid FAIRNESS_PRIORITY_REFRESH_RETRIES: %q, using default %d", v, cfg.MaxPriorityRefreshRetries)
+		}
+	}
+
+	if v := os.Getenv("FAIRNESS_REBUILD_THRESHOLD"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.RebuildThreshold = n
+		} else {
+			klog.Warningf("Invalid FAIRNESS_REBUILD_THRESHOLD: %q, using default %d", v, cfg.RebuildThreshold)
+		}
+	}
+
+	return cfg
+}
+
 func (s *store) Run(ctx context.Context) {
+	s.rootCtx = ctx
 	go func() {
 		for {
 			select {
@@ -328,6 +373,10 @@ func (s *store) UpdateTokenCount(userID, model string, inputTokens, outputTokens
 	return s.tokenTracker.UpdateTokenCount(userID, model, inputTokens, outputTokens)
 }
 
+func (s *store) GetRequestCount(userID, model string) (int, error) {
+	return s.tokenTracker.GetRequestCount(userID, model)
+}
+
 func (s *store) Enqueue(req *Request) error {
 	modelName := req.ModelName
 	var queue *RequestPriorityQueue
@@ -335,10 +384,15 @@ func (s *store) Enqueue(req *Request) error {
 	if ok {
 		queue, _ = val.(*RequestPriorityQueue)
 	} else {
-		newQueue := NewRequestPriorityQueue(nil)
+		newQueue := NewRequestPriorityQueueWithConfig(nil, s.fairnessQueueConfig, s.tokenTracker)
 		val, ok = s.requestWaitingQueue.LoadOrStore(modelName, newQueue)
 		if !ok {
-			go newQueue.Run(context.TODO(), defaultQueueQPS)
+			queueCtx := s.rootCtx
+			if queueCtx == nil {
+				klog.Warning("store.Enqueue called before Run(); using background context for queue")
+				queueCtx = context.Background()
+			}
+			go newQueue.Run(queueCtx, s.fairnessQueueConfig.MaxQPS)
 		}
 		queue, _ = val.(*RequestPriorityQueue)
 	}

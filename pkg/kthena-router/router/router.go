@@ -19,7 +19,9 @@ package router
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -78,6 +80,11 @@ type Router struct {
 
 	// KV Connector management
 	connectorFactory *connectors.Factory
+
+	// Fairness scheduling configuration
+	fairnessTimeout time.Duration
+	priorityAlpha   float64 // Weight for token-based priority (default 1.0)
+	priorityBeta    float64 // Weight for request-count-based priority (default 0.0)
 }
 
 func NewRouter(store datastore.Store, routerConfigPath string) *Router {
@@ -154,7 +161,32 @@ func NewRouter(store datastore.Store, routerConfigPath string) *Router {
 		metrics:          metricsInstance,
 		tokenizer:        tokenizerInstance,
 		connectorFactory: connectors.NewDefaultFactory(),
+		fairnessTimeout:  parseFairnessTimeout(),
+		priorityAlpha:    parseEnvFloat("FAIRNESS_PRIORITY_ALPHA", 1.0),
+		priorityBeta:     parseEnvFloat("FAIRNESS_PRIORITY_BETA", 0.0),
 	}
+}
+
+const defaultFairnessTimeout = 60 * time.Second
+
+func parseFairnessTimeout() time.Duration {
+	if s, ok := os.LookupEnv("FAIRNESS_QUEUE_TIMEOUT"); ok {
+		if d, err := time.ParseDuration(s); err == nil && d > 0 {
+			return d
+		}
+		klog.Warningf("Invalid FAIRNESS_QUEUE_TIMEOUT %q, using default %v", s, defaultFairnessTimeout)
+	}
+	return defaultFairnessTimeout
+}
+
+func parseEnvFloat(key string, fallback float64) float64 {
+	if s, ok := os.LookupEnv(key); ok {
+		if v, err := strconv.ParseFloat(s, 64); err == nil {
+			return v
+		}
+		klog.Warningf("Invalid %s %q, using default %v", key, s, fallback)
+	}
+	return fallback
 }
 
 type ModelRequest map[string]interface{}
@@ -975,8 +1007,19 @@ func (r *Router) handleFairnessScheduling(c *gin.Context, modelRequest ModelRequ
 		return fmt.Errorf("userId is not a string")
 	}
 
-	// TODO: better cal priority based on input and output token count
-	pri, _ := r.store.GetTokenCount(userId, modelName)
+	// Create request-scoped context that unifies client disconnect and server timeout
+	reqCtx, cancel := context.WithTimeout(c.Request.Context(), r.fairnessTimeout)
+	defer cancel()
+
+	// Compute composite priority: α × tokenCount + β × requestCount
+	tokenCount, _ := r.store.GetTokenCount(userId, modelName)
+	var pri float64
+	if r.priorityBeta != 0 {
+		reqCount, _ := r.store.GetRequestCount(userId, modelName)
+		pri = r.priorityAlpha*tokenCount + r.priorityBeta*float64(reqCount)
+	} else {
+		pri = r.priorityAlpha * tokenCount
+	}
 	queueReq := &datastore.Request{
 		ReqID:       requestID,
 		UserID:      userId,
@@ -984,6 +1027,8 @@ func (r *Router) handleFairnessScheduling(c *gin.Context, modelRequest ModelRequ
 		Priority:    pri,
 		RequestTime: time.Now(),
 		NotifyChan:  make(chan struct{}),
+		Ctx:         reqCtx,
+		DoneChan:    make(chan struct{}),
 	}
 
 	if err := r.store.Enqueue(queueReq); err != nil {
@@ -993,12 +1038,18 @@ func (r *Router) handleFairnessScheduling(c *gin.Context, modelRequest ModelRequ
 
 	select {
 	case <-queueReq.NotifyChan:
+		defer close(queueReq.DoneChan)
 		r.doLoadbalance(c, modelRequest)
 		return nil
-	case <-time.After(60 * time.Second):
-		// avoid blocking indefinitely
-		klog.Errorf("request %s processing timed out after 60 seconds", requestID)
-		c.AbortWithStatusJSON(http.StatusGatewayTimeout, "Request processing timed out")
-		return fmt.Errorf("request processing timed out")
+	case <-reqCtx.Done():
+		close(queueReq.DoneChan)
+		if errors.Is(reqCtx.Err(), context.DeadlineExceeded) {
+			klog.Errorf("request %s timed out in fairness queue after %v", requestID, r.fairnessTimeout)
+			c.AbortWithStatusJSON(http.StatusGatewayTimeout, "Request processing timed out")
+			return fmt.Errorf("request processing timed out in fairness queue")
+		}
+		klog.Infof("request %s cancelled: client disconnected", requestID)
+		c.AbortWithStatusJSON(http.StatusServiceUnavailable, "Client disconnected while waiting in fairness queue")
+		return fmt.Errorf("client disconnected while waiting in fairness queue")
 	}
 }

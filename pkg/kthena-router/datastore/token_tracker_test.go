@@ -686,3 +686,84 @@ func BenchmarkConcurrentAccess(b *testing.B) {
 		}
 	})
 }
+
+func TestGetRequestCount_Basic(t *testing.T) {
+	tracker := NewInMemorySlidingWindowTokenTracker()
+
+	user := "test-user"
+	model := "test-model"
+
+	// Initially zero
+	count, err := tracker.GetRequestCount(user, model)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected 0, got %d", count)
+	}
+
+	// After 3 updates, should have 3 requests
+	for i := 0; i < 3; i++ {
+		if err := tracker.UpdateTokenCount(user, model, 10, 5); err != nil {
+			t.Fatalf("UpdateTokenCount failed: %v", err)
+		}
+	}
+
+	count, err = tracker.GetRequestCount(user, model)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if count != 3 {
+		t.Errorf("expected 3, got %d", count)
+	}
+}
+
+func TestGetRequestCount_EmptyInputs(t *testing.T) {
+	tracker := NewInMemorySlidingWindowTokenTracker()
+
+	count, err := tracker.GetRequestCount("", "model")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected 0 for empty user, got %d", count)
+	}
+
+	count, err = tracker.GetRequestCount("user", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected 0 for empty model, got %d", count)
+	}
+}
+
+func TestGetRequestCount_Concurrent(t *testing.T) {
+	tracker := NewInMemorySlidingWindowTokenTracker()
+	user := "concurrent-user"
+	model := "concurrent-model"
+	numGoroutines := 10
+	numOps := 100
+
+	var wg sync.WaitGroup
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < numOps; j++ {
+				_ = tracker.UpdateTokenCount(user, model, 1, 0)
+				_, _ = tracker.GetRequestCount(user, model)
+			}
+		}()
+	}
+	wg.Wait()
+
+	count, err := tracker.GetRequestCount(user, model)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := numGoroutines * numOps
+	if count != expected {
+		t.Errorf("expected %d, got %d", expected, count)
+	}
+}
