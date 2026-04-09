@@ -89,6 +89,7 @@ func (v *ModelServingValidator) validateModelServing(modelServing *workloadv1alp
 	allErrs = append(allErrs, validateRollingUpdateConfiguration(modelServing)...)
 	allErrs = append(allErrs, validateGangPolicy(modelServing)...)
 	allErrs = append(allErrs, validateWorkerReplicas(modelServing)...)
+	allErrs = append(allErrs, validateRecoveryPolicyAndRolloutStrategy(modelServing)...)
 
 	if len(allErrs) > 0 {
 		var messages []string
@@ -370,4 +371,53 @@ func validateImageField(image string) error {
 	}
 
 	return nil
+}
+
+func validateRecoveryPolicyAndRolloutStrategy(ms *workloadv1alpha1.ModelServing) field.ErrorList {
+	var allErrs field.ErrorList
+	// Effective defaults:
+	// - recoveryPolicy: RoleRecreate
+	// - rolloutStrategy.type: ServingGroupRollingUpdate
+	// Required one-to-one mapping not be:
+	// - ServingGroupRecreate <-> roleRollingUpdate
+	effectiveRecoveryPolicy := ms.Spec.RecoveryPolicy
+	if effectiveRecoveryPolicy == "" {
+		effectiveRecoveryPolicy = workloadv1alpha1.RoleRecreate
+	}
+
+	effectiveRolloutType := workloadv1alpha1.ServingGroupRollingUpdate
+	if ms.Spec.RolloutStrategy != nil {
+		effectiveRolloutType = ms.Spec.RolloutStrategy.Type
+		if effectiveRolloutType == "" {
+			effectiveRolloutType = workloadv1alpha1.ServingGroupRollingUpdate
+		}
+	}
+
+	unMatched := (effectiveRecoveryPolicy == workloadv1alpha1.ServingGroupRecreate && effectiveRolloutType == workloadv1alpha1.RoleRollingUpdate)
+
+	if unMatched {
+		// Point to the explicitly specified field when possible.
+		errPath := field.NewPath("spec").Child("rolloutStrategy").Child("type")
+		errValue := any(effectiveRolloutType)
+		if ms.Spec.RolloutStrategy == nil {
+			errPath = field.NewPath("spec").Child("recoveryPolicy")
+			errValue = effectiveRecoveryPolicy
+		}
+
+		allErrs = append(allErrs, field.Invalid(
+			errPath,
+			errValue,
+			fmt.Sprintf(
+				"incompatible recoveryPolicy and rolloutStrategy.type after applying defaults: recoveryPolicy=%s, rolloutStrategy.type=%s; valid pairs: (%s,%s) or (%s,%s)",
+				effectiveRecoveryPolicy,
+				effectiveRolloutType,
+				workloadv1alpha1.ServingGroupRecreate,
+				workloadv1alpha1.ServingGroupRollingUpdate,
+				workloadv1alpha1.RoleRecreate,
+				workloadv1alpha1.RoleRollingUpdate,
+			),
+		))
+	}
+
+	return allErrs
 }

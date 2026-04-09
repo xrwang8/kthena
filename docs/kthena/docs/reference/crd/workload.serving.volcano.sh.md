@@ -770,7 +770,7 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `type` _[RolloutStrategyType](#rolloutstrategytype)_ | Type defines the rollout strategy, it can only be “ServingGroupRollingUpdate” for now. | ServingGroupRollingUpdate | Enum: [ServingGroupRollingUpdate] <br /> |
+| `type` _[RolloutStrategyType](#rolloutstrategytype)_ | Type defines the rollout strategy. Supported values are<br />"ServingGroupRollingUpdate" and "RoleRollingUpdate". If not specified,<br />it defaults to "ServingGroupRollingUpdate". | ServingGroupRollingUpdate | Enum: [ServingGroupRollingUpdate RoleRollingUpdate] <br /> |
 | `rollingUpdateConfiguration` _[RollingUpdateConfiguration](#rollingupdateconfiguration)_ | RollingUpdateConfiguration defines the parameters to be used when type is RollingUpdateStrategyType.<br />optional |  |  |
 
 
@@ -778,7 +778,9 @@ _Appears in:_
 
 _Underlying type:_ _string_
 
-
+RolloutStrategyType defines the strategy to use to update replicas.
+Note that if `recoveryPolicy` is set to `ServingGroupRecreate` and `rolloutStrategyType` is set to `RoleRollingUpdate`,
+the entire servingGroup will be deleted during a rolling update because the outdated role is removed.
 
 
 
@@ -787,7 +789,8 @@ _Appears in:_
 
 | Field | Description |
 | --- | --- |
-| `ServingGroupRollingUpdate` | ServingGroupRollingUpdate indicates that ServingGroup replicas will be updated one by one.<br /> |
+| `ServingGroupRollingUpdate` | `ServingGroupRollingUpdate` indicates that ServingGroup replicas will be updated one by one.<br /> |
+| `RoleRollingUpdate` | `RoleRollingUpdate` indicates that Role replicas will be updated one by one.<br /> |
 
 
 #### SelectPolicyType
