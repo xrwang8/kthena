@@ -58,9 +58,6 @@ spec:
                     mountPath: /dev/shm
                   - name: hf-cache
                     mountPath: /root/.cache/huggingface
-                  - name: localtime
-                    mountPath: /etc/localtime
-                    readOnly: true
                 readinessProbe:
                   httpGet:
                     path: /health
@@ -78,10 +75,6 @@ spec:
                 hostPath:
                   path: /root/.cache/huggingface
                   type: DirectoryOrCreate
-              - name: localtime
-                hostPath:
-                  path: /etc/localtime
-                  type: File
         workerReplicas: 0
 
       # ── Decode ───────────────────────────────────────────
@@ -134,9 +127,6 @@ spec:
                     mountPath: /dev/shm
                   - name: hf-cache
                     mountPath: /root/.cache/huggingface
-                  - name: localtime
-                    mountPath: /etc/localtime
-                    readOnly: true
                 readinessProbe:
                   httpGet:
                     path: /health
@@ -154,8 +144,4 @@ spec:
                 hostPath:
                   path: /root/.cache/huggingface
                   type: DirectoryOrCreate
-              - name: localtime
-                hostPath:
-                  path: /etc/localtime
-                  type: File
         workerReplicas: 0
