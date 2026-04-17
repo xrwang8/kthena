@@ -1235,13 +1235,13 @@ func TestModelRouteLoraShared(t *testing.T, testCtx *routercontext.RouterTestCon
 	podName := podList.Items[0].Name
 	t.Logf("Using pod %s for LoRA adapter loading", podName)
 
-	pf, err := utils.SetupPortForwardToPod(testNamespace, podName, "9000", "8000")
+	pf, err := utils.SetupPortForwardToPod(testNamespace, podName, "9002", "8002")
 	require.NoError(t, err, "Failed to setup port-forward to LLM-Mock pod")
 	defer pf.Close()
 
 	t.Log("Loading LoRA adapters on backend...")
-	utils.LoadLoRAAdapter(t, "http://127.0.0.1:9000", "lora-A", "/models/lora-A")
-	utils.LoadLoRAAdapter(t, "http://127.0.0.1:9000", "lora-B", "/models/lora-B")
+	utils.LoadLoRAAdapter(t, "http://127.0.0.1:9002", "lora-A", "/models/lora-A")
+	utils.LoadLoRAAdapter(t, "http://127.0.0.1:9002", "lora-B", "/models/lora-B")
 	t.Log("LoRA adapters loaded successfully")
 
 	messages := []utils.ChatMessage{
@@ -1299,8 +1299,8 @@ func TestModelRouteLoraShared(t *testing.T, testCtx *routercontext.RouterTestCon
 
 	// Unload LoRA adapters after test is complete
 	t.Log("Unloading LoRA adapters after test...")
-	utils.UnloadLoRAAdapter(t, "http://127.0.0.1:9000", "lora-A")
-	utils.UnloadLoRAAdapter(t, "http://127.0.0.1:9000", "lora-B")
+	utils.UnloadLoRAAdapter(t, "http://127.0.0.1:9002", "lora-A")
+	utils.UnloadLoRAAdapter(t, "http://127.0.0.1:9002", "lora-B")
 	t.Log("LoRA adapters unloaded successfully")
 }
 
