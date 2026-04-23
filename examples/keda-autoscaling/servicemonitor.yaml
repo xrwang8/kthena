@@ -6,7 +6,7 @@ metadata:
 spec:
   namespaceSelector:
     matchNames:
-      - default
+      - kthena-system
   selector:
     matchLabels:
       app.kubernetes.io/component: kthena-router

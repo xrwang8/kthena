@@ -13,12 +13,27 @@ spec:
         entryTemplate:
           spec:
             containers:
-              - name: entry
+              - name: leader
+                image: nginx:alpine
+                ports:
+                  - containerPort: 8080
+        workerReplicas: 1
+        workerTemplate:
+          spec:
+            containers:
+              - name: worker
                 image: nginx:alpine
                 ports:
                   - containerPort: 8080
       - name: worker
         replicas: 1
+        entryTemplate:
+          spec:
+            containers:
+              - name: leader
+                image: nginx:alpine
+                ports:
+                  - containerPort: 8080
         workerReplicas: 1
         workerTemplate:
           spec:

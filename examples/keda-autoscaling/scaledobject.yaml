@@ -16,5 +16,9 @@ spec:
     - type: prometheus
       metadata:
         serverAddress: http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090
-        query: sum(kthena_router_active_downstream_requests)
+        # Filter by the `model` label so the signal is not polluted by
+        # unrelated traffic on the same router. The value must match the
+        # model name the router sees on inbound requests (i.e. the `model`
+        # field in OpenAI-style payloads routed by a ModelRoute).
+        query: sum(kthena_router_active_downstream_requests{model="test"})
         threshold: "10"

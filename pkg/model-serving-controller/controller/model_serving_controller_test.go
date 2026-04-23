@@ -3842,6 +3842,9 @@ func TestUpdateModelServingStatusLabelSelector(t *testing.T) {
 
 			expectedSelector := labels.Set{
 				workloadv1alpha1.ModelServingNameLabelKey: tt.msName,
+				workloadv1alpha1.EntryLabelKey:            utils.Entry,
+				workloadv1alpha1.RoleLabelKey:             "prefill",
+				workloadv1alpha1.RoleIDKey:                utils.GenerateRoleID("prefill", 0),
 			}.String()
 
 			assert.Equal(t, expectedSelector, updated.Status.LabelSelector,

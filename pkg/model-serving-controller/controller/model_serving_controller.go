@@ -1725,9 +1725,16 @@ func (c *ModelServingController) UpdateModelServingStatus(ms *workloadv1alpha1.M
 			// If no groups exist, handle gracefully by setting revisions to the new revision
 			if errors.Is(err, datastore.ErrServingGroupNotFound) {
 				copy := latestMS.DeepCopy()
-				selector := labels.Set{
+				selectorSet := labels.Set{
 					workloadv1alpha1.ModelServingNameLabelKey: latestMS.Name,
-				}.String()
+					workloadv1alpha1.EntryLabelKey:            utils.Entry,
+				}
+				if len(latestMS.Spec.Template.Roles) > 0 {
+					roleName := latestMS.Spec.Template.Roles[0].Name
+					selectorSet[workloadv1alpha1.RoleLabelKey] = roleName
+					selectorSet[workloadv1alpha1.RoleIDKey] = utils.GenerateRoleID(roleName, 0)
+				}
+				selector := selectorSet.String()
 				needsUpdate := copy.Status.CurrentRevision != revision || copy.Status.UpdateRevision != revision || copy.Status.LabelSelector != selector
 				if needsUpdate {
 					copy.Status.CurrentRevision = revision
@@ -1859,12 +1866,21 @@ func (c *ModelServingController) UpdateModelServingStatus(ms *workloadv1alpha1.M
 		}
 
 		// Set labelSelector so the scale subresource can report it to HPA.
-		// Without this, HPA fails with "selector is required" because it cannot
-		// determine which pods belong to this ModelServing.
-		// The selector matches the label applied to all pods by createBasePod().
-		selector := labels.Set{
+		// spec.replicas counts ServingGroups, not pods, so the selector must
+		// match exactly one pod per group — otherwise HPA/KEDA sees a pod count
+		// that is a multiple of the group count and scales incorrectly.
+		// Pin to the entry pod of the 0th instance of the first role: there is
+		// exactly one such pod per group, regardless of role.Replicas.
+		selectorSet := labels.Set{
 			workloadv1alpha1.ModelServingNameLabelKey: latestMS.Name,
-		}.String()
+			workloadv1alpha1.EntryLabelKey:            utils.Entry,
+		}
+		if len(latestMS.Spec.Template.Roles) > 0 {
+			roleName := latestMS.Spec.Template.Roles[0].Name
+			selectorSet[workloadv1alpha1.RoleLabelKey] = roleName
+			selectorSet[workloadv1alpha1.RoleIDKey] = utils.GenerateRoleID(roleName, 0)
+		}
+		selector := selectorSet.String()
 		if copy.Status.LabelSelector != selector {
 			shouldUpdate = true
 			copy.Status.LabelSelector = selector

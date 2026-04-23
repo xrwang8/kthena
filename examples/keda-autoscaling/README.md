@@ -1,27 +1,51 @@
 # KEDA Autoscaling for ModelServing
 
-This example demonstrates how to autoscale a ModelServing resource using [KEDA](https://keda.sh/) with Prometheus metrics.
+This example autoscales a `ModelServing` using [KEDA](https://keda.sh/) driven
+by a Prometheus query against kthena-router metrics.
 
 ## Prerequisites
 
-- KEDA installed in the cluster (`keda` namespace)
-- Prometheus stack deployed (`monitoring` namespace)
-- Kthena router exposing metrics via ServiceMonitor
-- KEDA RBAC for ModelServing (see `keda-rbac.yaml` in the repo root)
+- KEDA installed in the `keda` namespace.
+- A Prometheus stack reachable at the `serverAddress` used in `scaledobject.yaml`
+  (the example assumes kube-prometheus-stack in the `monitoring` namespace).
+- kthena-router deployed and serving traffic for a model known to Prometheus
+  under the `model` label (see "Model label" below).
+
+## Files
+
+- `modelserving.yaml`   — a minimal ModelServing named `test-model`.
+- `servicemonitor.yaml` — scrapes kthena-router `/metrics` into Prometheus.
+- `rbac.yaml`           — grants the KEDA operator access to the ModelServing
+  `scale` subresource (required for KEDA to change `spec.replicas`).
+- `scaledobject.yaml`   — the KEDA `ScaledObject` that drives scaling.
 
 ## Usage
 
 ```bash
+kubectl apply -f rbac.yaml
+kubectl apply -f servicemonitor.yaml
 kubectl apply -f modelserving.yaml
 kubectl apply -f scaledobject.yaml
 ```
 
-## How it works
+## Model label
 
-- `modelserving.yaml` creates a ModelServing resource named `test-model` with entry and worker roles.
-- `scaledobject.yaml` creates a KEDA ScaledObject that targets the ModelServing resource and scales based on Prometheus metrics from the kthena-router.
-- KEDA queries Prometheus for `kthena_router_active_downstream_requests` and adjusts `spec.replicas` (the number of serving groups) accordingly.
+The Prometheus query filters by `model="test"`:
 
-## Scaling: groups vs pods
+```promql
+sum(kthena_router_active_downstream_requests{model="test"})
+```
 
-ModelServing scales at the **group** level (`spec.replicas`), not at the individual pod level. Each group may contain multiple pods (entry + workers). The Prometheus query uses `sum()` to aggregate metrics across all pods, and the threshold is set relative to group capacity. This ensures the scaling decision correctly maps to the number of groups, even though the actual pod count is a multiple of the group count.
+The `model` label is populated by kthena-router from the request (e.g. the
+`model` field in an OpenAI-style payload, or the ModelRoute match). Change the
+label value to match the model name your traffic uses — a global `sum(...)`
+without the filter would aggregate every model on the router and produce wrong
+scaling decisions.
+
+## Scaling unit: ServingGroup, not pod
+
+`spec.replicas` on a ModelServing is the number of **ServingGroups**, and each
+group can contain several pods (one entry + workers per role). The scale
+subresource's `status.labelSelector` is therefore scoped to the entry pod of
+the first role, so the selector matches exactly one pod per group and the
+HPA/KEDA pod count lines up with `spec.replicas`.
