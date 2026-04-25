@@ -322,7 +322,6 @@ func TestHTTPRouteNotSkippedAfterRouterRestart(t *testing.T) {
 			LabelSelector: routerPodSelector,
 		})
 		if err != nil {
-		
 			return false
 		}
 		// Defensive: rollout status already confirmed new pods are Ready,
