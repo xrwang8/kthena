@@ -27,30 +27,30 @@ import (
 )
 
 var (
-	GPUCacheUsage     = "vllm:gpu_cache_usage_perc"
+	KVCacheUsage      = "vllm:kv_cache_usage_perc"
 	RequestWaitingNum = "vllm:num_requests_waiting"
 	RequestRunningNum = "vllm:num_requests_running"
-	TPOT              = "vllm:time_per_output_token_seconds"
+	ITL               = "vllm:inter_token_latency_seconds"
 	TTFT              = "vllm:time_to_first_token_seconds"
 )
 
 var (
 	CounterAndGaugeMetrics = []string{
-		GPUCacheUsage,
+		KVCacheUsage,
 		RequestWaitingNum,
 		RequestRunningNum,
 	}
 
 	HistogramMetrics = []string{
-		TPOT,
+		ITL,
 		TTFT,
 	}
 
 	mapOfMetricsName = map[string]string{
-		GPUCacheUsage:     utils.GPUCacheUsage,
+		KVCacheUsage:      utils.KVCacheUsage,
 		RequestWaitingNum: utils.RequestWaitingNum,
 		RequestRunningNum: utils.RequestRunningNum,
-		TPOT:              utils.TPOT,
+		ITL:               utils.TPOT,
 		TTFT:              utils.TTFT,
 	}
 )

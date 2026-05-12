@@ -1486,7 +1486,7 @@ func TestSglangMetricsShared(t *testing.T, testCtx *routercontext.RouterTestCont
 
 	engine := sglang.NewSglangEngine()
 	countMetrics := engine.GetCountMetricsInfo(allMetrics)
-	assert.Contains(t, countMetrics, routerutils.GPUCacheUsage,
+	assert.Contains(t, countMetrics, routerutils.KVCacheUsage,
 		"Missing gpu_usage (sglang:token_usage) in count metrics")
 	assert.Contains(t, countMetrics, routerutils.RequestWaitingNum,
 		"Missing request_waiting_num (sglang:num_queue_reqs) in count metrics")
@@ -1497,9 +1497,9 @@ func TestSglangMetricsShared(t *testing.T, testCtx *routercontext.RouterTestCont
 	assert.Contains(t, histogramMetrics, routerutils.TPOT,
 		"Missing TPOT (sglang:time_per_output_token_seconds) in histogram metrics")
 
-	t.Logf("Pod %s: gpu_usage=%.4f, request_waiting_num=%.0f, TTFT=%.6f, TPOT=%.6f",
+	t.Logf("Pod %s: kv_cache_usage=%.4f, request_waiting_num=%.0f, TTFT=%.6f, TPOT=%.6f",
 		targetPod.Name,
-		countMetrics[routerutils.GPUCacheUsage],
+		countMetrics[routerutils.KVCacheUsage],
 		countMetrics[routerutils.RequestWaitingNum],
 		histogramMetrics[routerutils.TTFT],
 		histogramMetrics[routerutils.TPOT])
